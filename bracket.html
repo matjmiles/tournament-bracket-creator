@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tournament Bracket Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: control rail on the left, a sheet of "paper" on the right showing the bracket and how it splits into pages. */
+:root {
+  --bg: #eef0f3;
+  --panel: #ffffff;
+  --fg: #1a1f27;
+  --muted: #5b6573;
+  --line: #d3d8e0;
+  --accent: #1d4f91;
+  --accent-fg: #ffffff;
+  --accent-soft: #e2eaf6;
+  --good: #1f7a4d;
+  --bad: #b3261e;
+  /* Paper is always paper: these stay the same in both themes on purpose. */
+  --paper: #ffffff;
+  --ink: #14171c;
+  --ink-2: #3f4650;
+  --ink-3: #6f7782;
+  --tint: #eff1f4;
+  --tile: #1d4f91;
+  --f-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", Arial, sans-serif;
+  --f-body: "Barlow", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161c; --panel: #1b2029; --fg: #e6e9ee; --muted: #9aa4b2; --line: #2f3643;
+    --accent: #7fa8e6; --accent-fg: #0e1623; --accent-soft: #223149; --good: #5cc28f; --bad: #ff8a80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161c; --panel: #1b2029; --fg: #e6e9ee; --muted: #9aa4b2; --line: #2f3643;
+  --accent: #7fa8e6; --accent-fg: #0e1623; --accent-soft: #223149; --good: #5cc28f; --bad: #ff8a80;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 var(--f-body); }
+.app { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 20px; padding-block: 20px; padding-inline: 20px; align-items: start; }
+@media (max-width: 860px) { .app { grid-template-columns: minmax(0, 1fr); padding-inline: 16px; } }
+
+.rail { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 18px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 20px); }
+@media (max-width: 860px) { .rail { position: static; } }
+.brand { display: flex; flex-direction: column; gap: 2px; }
+.brand h1 { margin: 0; font: 700 26px/1.05 var(--f-display); letter-spacing: .3px; text-wrap: balance; }
+.brand p { margin: 0; color: var(--muted); font-size: 13px; }
+
+fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+legend { font: 600 12px var(--f-display); letter-spacing: 1.4px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; padding: 0; }
+label.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 500; }
+input[type="text"], input[type="number"], select {
+  font: inherit; font-size: 15px; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 8px 10px; width: 100%;
+}
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.row > * { flex: 1 1 120px; min-width: 0; }
+
+.seg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg label { flex: 1; text-align: center; cursor: pointer; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg span { display: block; padding: 8px 6px; font-size: 14px; font-weight: 500; }
+.seg input:checked + span { background: var(--accent); color: var(--accent-fg); }
+.seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.presets { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { font: 500 13px var(--f-body); color: var(--accent); background: var(--accent-soft); border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.chip:hover { filter: brightness(.97); }
+
+.btn { font: 600 16px var(--f-display); letter-spacing: .6px; text-transform: uppercase; background: var(--accent); color: var(--accent-fg); border: 0; border-radius: 8px; padding: 12px 16px; cursor: pointer; width: 100%; }
+.btn:hover { filter: brightness(1.07); }
+.hint { margin: 0; font-size: 12.5px; color: var(--muted); }
+.hint b { color: var(--fg); font-weight: 600; }
+.notice { font-size: 13px; background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; }
+
+.stage { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.stats { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.stat { font: 600 14px var(--f-display); letter-spacing: .4px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-variant-numeric: tabular-nums; }
+.stat.ok { color: var(--good); }
+.stat.err { color: var(--bad); }
+.errors { color: var(--bad); font-size: 13px; margin: 0; }
+.sheetwrap { background: var(--paper); border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.18); overflow-x: auto; }
+.sheetwrap svg { display: block; width: 100%; min-width: 720px; height: auto; }
+
+/* Bracket drawing (inline SVG; 100 units = 1 inch) */
+.bk-title { font-family: var(--f-display); font-weight: 700; font-size: 42px; fill: var(--ink); }
+.bk-sub { font-family: var(--f-body); font-size: 17px; fill: var(--ink-2); }
+.bk-legend { font-family: var(--f-body); font-size: 11px; fill: var(--ink-3); }
+.bk-label { font-family: var(--f-display); font-weight: 600; font-size: 11px; letter-spacing: 1.5px; fill: var(--ink-3); }
+.bk-section { font-family: var(--f-display); font-weight: 700; font-size: 21px; letter-spacing: 2.5px; fill: var(--ink); }
+.bk-round { font-family: var(--f-display); font-weight: 600; font-size: 13px; letter-spacing: 1.2px; fill: var(--ink-2); text-anchor: middle; }
+.bk-gnum { font-family: var(--f-display); font-weight: 700; font-size: 11.5px; fill: var(--ink); text-anchor: end; }
+.bk-seed { font-family: var(--f-display); font-weight: 700; font-size: 14px; fill: var(--ink); text-anchor: middle; }
+.bk-src { font-family: var(--f-body); font-style: italic; font-size: 9px; fill: var(--ink-3); }
+.bk-meta { font-family: var(--f-body); font-size: 8.5px; fill: var(--ink-3); }
+.bk-note { font-family: var(--f-body); font-style: italic; font-size: 9.5px; fill: var(--ink-2); }
+.bk-box { fill: var(--paper); stroke: var(--ink); stroke-width: 1.3; }
+.bk-champ { fill: var(--paper); stroke: var(--ink); stroke-width: 2.6; }
+.bk-fill { fill: var(--tint); stroke: none; }
+.bk-rule { stroke: var(--ink); stroke-width: .8; }
+.bk-wline { stroke: var(--ink-3); stroke-width: .6; }
+.bk-link { fill: none; stroke: var(--ink); stroke-width: 1.3; }
+.bk-mark { fill: none; stroke: var(--ink-3); }
+.bk-tile { fill: none; stroke: var(--tile); stroke-dasharray: 10 7; }
+.bk-tilenum { font-family: var(--f-display); font-weight: 700; fill: var(--tile); opacity: .22; text-anchor: middle; dominant-baseline: middle; }
+
+/* Print: only the page tiles */
+#sheets { display: none; }
+@page { size: letter landscape; margin: 0.25in; }
+@media print {
+  :root { padding: 0 !important; }
+  body { background: #fff; }
+  .app { display: none !important; }
+  #sheets { display: block; }
+  .sheet { width: 10.5in; height: 7.95in; overflow: hidden; break-after: page; page-break-after: always; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sheet:last-child { break-after: auto; page-break-after: auto; }
+  .sheet svg { display: block; width: 10.5in; height: 7.65in; }
+  .sheet-label { height: .3in; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; font: 9pt var(--f-body); color: #444; }
+  .sheet-label b { font-family: var(--f-display); font-size: 11pt; color: #111; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand">
+      <h1>Tournament Bracket Builder</h1>
+      <p>Printable single- and double-elimination brackets, 2 to 32 teams.</p>
+    </div>
+
+    <fieldset>
+      <legend>Tournament</legend>
+      <label class="field">Title
+        <input type="text" id="title" placeholder="Leave blank for a write-in line" autocomplete="off">
+      </label>
+      <label class="field">Subtitle or division
+        <input type="text" id="subtitle" placeholder="e.g. U12 Boys" autocomplete="off">
+      </label>
+      <label class="field">Date
+        <input type="text" id="date" placeholder="e.g. Oct 17–18, 2026" autocomplete="off">
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Format</legend>
+      <div class="row">
+        <label class="field">Teams
+          <input type="number" id="teams" min="2" max="32" step="1" value="21" inputmode="numeric">
+        </label>
+        <label class="field">Print size
+          <select id="scale">
+            <option value="1">100% (easiest to write on)</option>
+            <option value="0.85">85%</option>
+            <option value="0.7">70% (fewest pages)</option>
+          </select>
+        </label>
+      </div>
+      <div class="seg" role="radiogroup" aria-label="Elimination type">
+        <label><input type="radio" name="elim" id="elim-single" value="single"><span>Single elim</span></label>
+        <label><input type="radio" name="elim" id="elim-double" value="double" checked><span>Double elim</span></label>
+      </div>
+      <div class="presets">
+        <button type="button" class="chip" data-teams="21" data-elim="double">21 teams · double</button>
+        <button type="button" class="chip" data-teams="18" data-elim="double">18 teams · double</button>
+      </div>
+    </fieldset>
+
+    <div id="print-area" style="display:flex;flex-direction:column;gap:10px">
+      <button type="button" class="btn" id="print">Print bracket</button>
+      <p class="hint">In the print dialog choose <b>Landscape</b>, set scale to <b>100% / Actual size</b>, and turn <b>headers and footers off</b>. Line up the ⊕ marks where pages overlap, then tape.</p>
+    </div>
+    <div id="frame-note" class="notice" hidden>This online copy can preview brackets but can't print. To print, open <b>bracket.html</b> on your computer in Chrome or Edge.</div>
+  </aside>
+
+  <main class="stage">
+    <div class="stats" id="stats"></div>
+    <p class="errors" id="errors" hidden></p>
+    <div class="sheetwrap" id="preview"></div>
+  </main>
+</div>
+<div id="sheets"></div>
+
+<script>
+/* ENGINE-START */
+const BracketEngine = (() => {
+  // Geometry in drawing units: 100 units = 1 inch at 100% print size.
+  const U = { BW: 215, RH: 30, SEEDW: 24, SCW: 38, GAPX: 50, LEAF: 44, LABEL: 0, META: 17, LEFT: 40 };
+  U.COLW = U.BW + U.GAPX;
+
+  // Standard seed order: 1 v P, then halves mirrored so top seeds meet last.
+  function seedOrder(P) {
+    let o = [1];
+    while (o.length < P) {
+      const n = o.length * 2, next = [];
+      for (const s of o) next.push(s, n + 1 - s);
+      o = next;
+    }
+    return o;
+  }
+
+  // Which winners-bracket game's loser drops into losers game j (n games, drop round m).
+  // Alternating the order keeps teams from meeting the same opponent again right away.
+  function dropIndex(j, n, m) {
+    if (n === 1) return 0;
+    return m % 2 === 1 ? n - 1 - j : (j + n / 2) % n;
+  }
+
+  function build(N, dbl) {
+    const k = Math.max(1, Math.ceil(Math.log2(N)));
+    const P = 2 ** k;
+    const G = new Map();
+    const add = (id, bracket, round, index, a, b) => G.set(id, { id, bracket, round, index, src: [a, b] });
+    const win = g => ({ t: 'win', g });
+    const lose = g => ({ t: 'lose', g });
+
+    const order = seedOrder(P);
+    for (let i = 0; i < P / 2; i++) {
+      add(`W1-${i}`, 'W', 1, i, { t: 'seed', seed: order[2 * i] }, { t: 'seed', seed: order[2 * i + 1] });
+    }
+    for (let r = 2; r <= k; r++) {
+      for (let i = 0; i < P / 2 ** r; i++) add(`W${r}-${i}`, 'W', r, i, win(`W${r - 1}-${2 * i}`), win(`W${r - 1}-${2 * i + 1}`));
+    }
+
+    if (dbl) {
+      if (k >= 2) {
+        for (let j = 0; j < P / 4; j++) add(`L1-${j}`, 'L', 1, j, lose(`W1-${2 * j}`), lose(`W1-${2 * j + 1}`));
+        for (let m = 1; m <= k - 1; m++) {
+          const n = P / 2 ** (m + 1);
+          for (let j = 0; j < n; j++) {
+            add(`L${2 * m}-${j}`, 'L', 2 * m, j, win(`L${2 * m - 1}-${j}`), lose(`W${m + 1}-${dropIndex(j, n, m)}`));
+          }
+          if (m < k - 1) {
+            for (let j = 0; j < n / 2; j++) add(`L${2 * m + 1}-${j}`, 'L', 2 * m + 1, j, win(`L${2 * m}-${2 * j}`), win(`L${2 * m}-${2 * j + 1}`));
+          }
+        }
+        add('GF', 'F', 1, 0, win(`W${k}-0`), win(`L${2 * k - 2}-0`));
+      } else {
+        add('GF', 'F', 1, 0, win('W1-0'), lose('W1-0'));
+      }
+      add('IN', 'F', 2, 0, win('GF'), lose('GF'));
+    }
+
+    // Resolve byes: a game missing one team is a pass-through (not drawn), missing both is removed.
+    const st = new Map();
+    function resolveGame(id) {
+      if (st.has(id)) return st.get(id);
+      const ins = G.get(id).src.map(resolveSrc);
+      const n = ins.filter(Boolean).length;
+      const r = { status: n === 2 ? 'real' : n === 1 ? 'pass' : 'empty', ins };
+      st.set(id, r);
+      return r;
+    }
+    function resolveSrc(s) {
+      if (s.t === 'seed') return s.seed <= N ? s : null;
+      const r = resolveGame(s.g);
+      if (s.t === 'win') return r.status === 'real' ? s : r.status === 'pass' ? r.ins.find(Boolean) : null;
+      return r.status === 'real' ? s : null;
+    }
+
+    const games = [];
+    for (const g of G.values()) {
+      const r = resolveGame(g.id);
+      if (r.status === 'real') games.push({ ...g, ins: r.ins });
+    }
+    const b = { N, k, P, dbl, games, byId: new Map(games.map(g => [g.id, g])) };
+    number(b);
+    return b;
+  }
+
+  // Play order: W1, then for each later round Wr, L(2r-3), L(2r-2); then the finals.
+  function number(b) {
+    const seq = [['W', 1]];
+    for (let r = 2; r <= b.k; r++) {
+      seq.push(['W', r]);
+      if (b.dbl) seq.push(['L', 2 * r - 3], ['L', 2 * r - 2]);
+    }
+    if (b.dbl) seq.push(['F', 1], ['F', 2]);
+    let n = 1;
+    for (const [br, rd] of seq) {
+      b.games.filter(g => g.bracket === br && g.round === rd).sort((a, c) => a.index - c.index).forEach(g => { g.num = n++; });
+    }
+  }
+
+  function finalId(b) { return b.dbl ? 'IN' : `W${b.k}-0`; }
+
+  function validate(b) {
+    const errs = [];
+    const expected = b.dbl ? 2 * b.N - 1 : b.N - 1;
+    if (b.games.length !== expected) errs.push(`Expected ${expected} games, built ${b.games.length}.`);
+    const seeds = new Map(), wins = new Map(), loses = new Map();
+    const bump = (m, key) => m.set(key, (m.get(key) || 0) + 1);
+    for (const g of b.games) {
+      if (!g.num) errs.push(`Game ${g.id} has no number.`);
+      for (const s of g.ins) {
+        if (s.t === 'seed') bump(seeds, s.seed);
+        else if (!b.byId.has(s.g)) errs.push(`Game ${g.id} is fed by a game that doesn't exist.`);
+        else bump(s.t === 'win' ? wins : loses, s.g);
+      }
+    }
+    for (let s = 1; s <= b.N; s++) if (seeds.get(s) !== 1) errs.push(`Seed ${s} appears ${seeds.get(s) || 0} times.`);
+    for (const g of b.games) {
+      const wantWin = g.id === finalId(b) ? 0 : 1;
+      const wantLose = !b.dbl ? 0 : (g.bracket === 'W' || g.id === 'GF') ? 1 : 0;
+      if ((wins.get(g.id) || 0) !== wantWin) errs.push(`Winner of G${g.num} goes to ${wins.get(g.id) || 0} places.`);
+      if ((loses.get(g.id) || 0) !== wantLose) errs.push(`Loser of G${g.num} goes to ${loses.get(g.id) || 0} places.`);
+    }
+    return errs;
+  }
+
+  function roundName(b, br, round, idx, count) {
+    if (!b.dbl) {
+      const fromEnd = b.k - round;
+      return ['Final', 'Semifinals', 'Quarterfinals'][fromEnd] || `Round ${round}`;
+    }
+    if (idx === count - 1) return br === 'W' ? 'Winners Final' : 'Losers Final';
+    return `Round ${idx + 1}`;
+  }
+
+  function layout(b) {
+    const L = { pos: new Map(), headers: [], sections: [], links: [], champion: null, notes: [] };
+    const X = c => U.LEFT + c * U.COLW;
+    const colMap = br => {
+      const rounds = [...new Set(b.games.filter(g => g.bracket === br).map(g => g.round))].sort((a, c) => a - c);
+      return new Map(rounds.map((r, i) => [r, i]));
+    };
+    function place(id, top, cm) {
+      const g = b.byId.get(id);
+      let cur = top;
+      const cs = [];
+      for (const s of g.ins) {
+        const child = s.t === 'win' ? b.byId.get(s.g) : null;
+        if (child && child.bracket === g.bracket) {
+          const r = place(child.id, cur, cm);
+          cs.push(r.cy); cur = r.bottom;
+        } else {
+          cs.push(cur + U.LEAF / 2); cur += U.LEAF;
+        }
+      }
+      const cy = (cs[0] + cs[1]) / 2;
+      L.pos.set(id, { x: X(cm.get(g.round)), cy });
+      return { cy, bottom: cur };
+    }
+    function bracketSection(br, rootId, title, y) {
+      const cm = colMap(br);
+      if (title) { L.sections.push({ x: U.LEFT, y: y + 20, text: title }); y += 34; }
+      const hy = y + 14;
+      [...cm.entries()].forEach(([round, idx]) => {
+        L.headers.push({ x: X(idx) + U.BW / 2, y: hy, text: roundName(b, br, round, idx, cm.size).toUpperCase() });
+      });
+      y += 30;
+      const r = place(rootId, y, cm);
+      return { bottom: r.bottom, cols: cm.size };
+    }
+
+    let y = 170;
+    const w = bracketSection('W', `W${b.k}-0`, b.dbl ? 'WINNERS BRACKET' : '', y);
+    y = w.bottom;
+    let lcols = 0;
+    const wFinal = L.pos.get(`W${b.k}-0`);
+    let lastId = `W${b.k}-0`, champCol;
+    if (b.dbl) {
+      if (b.k >= 2) {
+        const l = bracketSection('L', `L${2 * b.k - 2}-0`, 'LOSERS BRACKET', y + 40);
+        y = l.bottom; lcols = l.cols;
+      }
+      const C = Math.max(w.cols, lcols);
+      const lFinal = b.k >= 2 ? L.pos.get(`L${2 * b.k - 2}-0`) : null;
+      const cy = lFinal ? (wFinal.cy + lFinal.cy) / 2 : wFinal.cy;
+      L.pos.set('GF', { x: X(C), cy });
+      L.pos.set('IN', { x: X(C + 1), cy });
+      L.headers.push({ x: X(C) + U.BW / 2, y: cy - U.RH - 30, text: 'GRAND FINAL' });
+      L.headers.push({ x: X(C + 1) + U.BW / 2, y: cy - U.RH - 30, text: 'IF NECESSARY' });
+      const gf = b.byId.get('GF');
+      const noteY = cy + U.RH + U.META + 14;
+      L.notes.push({ x: X(C + 1), y: noteY, text: 'Played only if the losers-bracket team' });
+      L.notes.push({ x: X(C + 1), y: noteY + 13, text: `wins G${gf.num}. Same two teams.` });
+      lastId = 'IN'; champCol = C + 2;
+    } else {
+      champCol = w.cols;
+    }
+    const last = L.pos.get(lastId);
+    L.champion = { x: X(champCol), cy: last.cy };
+    L.headers.push({ x: X(champCol) + U.BW / 2, y: last.cy - U.RH / 2 - 16, text: 'CHAMPION' });
+
+    for (const g of b.games) {
+      const p = L.pos.get(g.id);
+      g.ins.forEach((s, i) => {
+        if (s.t !== 'win') return;
+        const f = L.pos.get(s.g);
+        L.links.push({ x1: f.x + U.BW, y1: f.cy, x2: p.x, y2: p.cy + (i === 0 ? -U.RH / 2 : U.RH / 2) });
+      });
+    }
+    L.links.push({ x1: last.x + U.BW, y1: last.cy, x2: L.champion.x, y2: last.cy });
+
+    let maxY = y;
+    for (const p of L.pos.values()) maxY = Math.max(maxY, p.cy + U.RH + U.META + 40);
+    L.width = X(champCol) + U.BW + U.LEFT;
+    L.height = maxY + 40;
+    return L;
+  }
+
+  return { U, seedOrder, build, validate, layout };
+})();
+/* ENGINE-END */
+
+/* ---------- Drawing ---------- */
+const U = BracketEngine.U;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const f = n => Math.round(n * 10) / 10;
+
+function drawBracket(b, L, info) {
+  const out = [];
+  const rects = []; // content boxes, used to skip blank pages
+  const R = (x0, y0, x1, y1) => rects.push([Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)]);
+
+  // Header
+  const hx = U.LEFT;
+  if (info.title) {
+    out.push(`<text class="bk-title" x="${hx}" y="78">${esc(info.title)}</text>`);
+  } else {
+    out.push(`<text class="bk-label" x="${hx}" y="44">TOURNAMENT</text>`);
+    out.push(`<line class="bk-rule" x1="${hx}" y1="82" x2="${hx + 640}" y2="82"/>`);
+  }
+  const fmt = `${b.N} teams · ${b.dbl ? 'Double' : 'Single'} elimination`;
+  const subParts = [info.subtitle, info.date, fmt].filter(Boolean).map(esc);
+  out.push(`<text class="bk-sub" x="${hx}" y="110">${subParts.join('  ·  ')}</text>`);
+  const legend = b.dbl
+    ? 'Winners follow the lines to the right. A winners-bracket loser drops to the slot marked “Loser of G#”. A second loss eliminates a team.'
+    : 'Winners follow the lines to the right. Seed numbers are printed where each team starts.';
+  out.push(`<text class="bk-legend" x="${hx}" y="134">${legend}</text>`);
+  R(hx, 30, hx + 900, 140);
+
+  for (const s of L.sections) { out.push(`<text class="bk-section" x="${s.x}" y="${s.y}">${s.text}</text>`); R(s.x, s.y - 20, s.x + 260, s.y + 4); }
+  for (const h of L.headers) { out.push(`<text class="bk-round" x="${f(h.x)}" y="${f(h.y)}">${h.text}</text>`); R(h.x - U.BW / 2, h.y - 14, h.x + U.BW / 2, h.y + 4); }
+
+  for (const k of L.links) {
+    const mid = k.x2 - U.GAPX / 2;
+    out.push(`<path class="bk-link" d="M${f(k.x1)} ${f(k.y1)}H${f(mid)}V${f(k.y2)}H${f(k.x2)}"/>`);
+    R(k.x1, k.y1 - 1, mid, k.y1 + 1); R(mid - 1, k.y1, mid + 1, k.y2); R(mid, k.y2 - 1, k.x2, k.y2 + 1);
+  }
+
+  for (const g of b.games) {
+    const { x, cy } = L.pos.get(g.id);
+    const top = cy - U.RH, bot = cy + U.RH;
+    out.push(`<text class="bk-gnum" x="${x - 4}" y="${f(top + 11)}">G${g.num}</text>`);
+    out.push(`<rect class="bk-box" x="${x}" y="${f(top)}" width="${U.BW}" height="${U.RH * 2}"/>`);
+    out.push(`<rect class="bk-fill" x="${x + U.BW - U.SCW}" y="${f(top + .7)}" width="${U.SCW - .7}" height="${U.RH * 2 - 1.4}"/>`);
+    g.ins.forEach((s, i) => {
+      const rt = top + i * U.RH;
+      if (s.t === 'seed') {
+        out.push(`<rect class="bk-fill" x="${x + .7}" y="${f(rt + .7)}" width="${U.SEEDW - .7}" height="${U.RH - 1.4}"/>`);
+        out.push(`<line class="bk-rule" x1="${x + U.SEEDW}" y1="${f(rt)}" x2="${x + U.SEEDW}" y2="${f(rt + U.RH)}"/>`);
+        out.push(`<text class="bk-seed" x="${x + U.SEEDW / 2}" y="${f(rt + U.RH / 2 + 5)}">${s.seed}</text>`);
+      } else if (s.t === 'lose') {
+        out.push(`<text class="bk-src" x="${x + 5}" y="${f(rt + 10)}">Loser of G${b.byId.get(s.g).num}</text>`);
+      }
+    });
+    out.push(`<line class="bk-rule" x1="${x}" y1="${f(cy)}" x2="${x + U.BW}" y2="${f(cy)}"/>`);
+    out.push(`<line class="bk-rule" x1="${x + U.BW - U.SCW}" y1="${f(top)}" x2="${x + U.BW - U.SCW}" y2="${f(bot)}"/>`);
+    out.push(`<rect class="bk-box" x="${x}" y="${f(top)}" width="${U.BW}" height="${U.RH * 2}" style="fill:none"/>`);
+    const my = bot + 12;
+    out.push(`<text class="bk-meta" x="${x}" y="${f(my)}">Time</text><line class="bk-wline" x1="${x + 22}" y1="${f(my + 1)}" x2="${x + 100}" y2="${f(my + 1)}"/>`);
+    out.push(`<text class="bk-meta" x="${x + 110}" y="${f(my)}">Court</text><line class="bk-wline" x1="${x + 136}" y1="${f(my + 1)}" x2="${x + U.BW}" y2="${f(my + 1)}"/>`);
+    R(x - 26, top, x + U.BW, bot + U.META);
+  }
+
+  for (const n of L.notes) { out.push(`<text class="bk-note" x="${n.x}" y="${f(n.y)}">${esc(n.text)}</text>`); R(n.x, n.y - 10, n.x + U.BW, n.y + 3); }
+
+  const c = L.champion;
+  out.push(`<rect class="bk-champ" x="${c.x}" y="${f(c.cy - U.RH / 2 - 4)}" width="${U.BW}" height="${U.RH + 8}"/>`);
+  R(c.x, c.cy - U.RH, c.x + U.BW, c.cy + U.RH);
+
+  return { svg: out.join(''), rects };
+}
+
+function tiles(L, scale, rects) {
+  const tw = 1050 / scale, th = 765 / scale, ov = 40 / scale;
+  const cols = L.width <= tw ? 1 : Math.ceil((L.width - ov) / (tw - ov));
+  const rows = L.height <= th ? 1 : Math.ceil((L.height - ov) / (th - ov));
+  const list = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const x = c * (tw - ov), y = r * (th - ov);
+    const used = rects.some(([x0, y0, x1, y1]) => x1 > x && x0 < x + tw && y1 > y && y0 < y + th);
+    if (used) list.push({ r, c, x, y, w: tw, h: th });
+  }
+  // Registration marks sit in the middle of each overlap strip, so they print on both neighbors.
+  const marks = [];
+  const a = 9 / scale, sw = 0.8 / scale, pad = a + 4 / scale;
+  const clear = (x, y) => !rects.some(([x0, y0, x1, y1]) => x + pad > x0 && x - pad < x1 && y + pad > y0 && y - pad < y1);
+  // Try spots along the strip, starting near the page corner, until one misses the bracket.
+  const near = [0.1, 0.16, 0.22, 0.28, 0.34, 0.4, 0.46];
+  const place = at => {
+    for (const t of near) { const [x, y] = at(t); if (clear(x, y)) return mk(x, y); }
+    const [x, y] = at(near[0]); mk(x, y);
+  };
+  const mk = (x, y) => {
+    marks.push(`<circle class="bk-mark" cx="${f(x)}" cy="${f(y)}" r="${f(a * .7)}" stroke-width="${f(sw)}"/><path class="bk-mark" stroke-width="${f(sw)}" d="M${f(x - a)} ${f(y)}H${f(x + a)}M${f(x)} ${f(y - a)}V${f(y + a)}"/>`);
+  };
+  for (let c = 1; c < cols; c++) for (let r = 0; r < rows; r++) {
+    const x = c * (tw - ov) + ov / 2, y0 = r * (th - ov);
+    place(t => [x, y0 + th * t]); place(t => [x, y0 + th * (1 - t)]);
+  }
+  for (let r = 1; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const y = r * (th - ov) + ov / 2, x0 = c * (tw - ov);
+    place(t => [x0 + tw * t, y]); place(t => [x0 + tw * (1 - t), y]);
+  }
+  return { list, rows, cols, marks: marks.join('') };
+}
+
+/* ---------- App ---------- */
+const $ = id => document.getElementById(id);
+const STORE = 'bracket-builder-settings-v1';
+
+function readState() {
+  const teams = Math.round(Number($('teams').value));
+  return {
+    title: $('title').value.trim(),
+    subtitle: $('subtitle').value.trim(),
+    date: $('date').value.trim(),
+    teams,
+    dbl: $('elim-double').checked,
+    scale: Number($('scale').value) || 1,
+  };
+}
+
+function applyState(s) {
+  if (s.title != null) $('title').value = s.title;
+  if (s.subtitle != null) $('subtitle').value = s.subtitle;
+  if (s.date != null) $('date').value = s.date;
+  if (s.teams) $('teams').value = s.teams;
+  if (s.dbl != null) { $('elim-double').checked = !!s.dbl; $('elim-single').checked = !s.dbl; }
+  if (s.scale) $('scale').value = String(s.scale);
+}
+
+function render() {
+  const s = readState();
+  try { localStorage.setItem(STORE, JSON.stringify(s)); } catch (e) { /* storage unavailable */ }
+  const stats = $('stats'), errors = $('errors');
+  if (!Number.isFinite(s.teams) || s.teams < 2 || s.teams > 32) {
+    stats.innerHTML = '';
+    errors.hidden = false;
+    errors.textContent = 'Enter a team count from 2 to 32.';
+    return;
+  }
+  const b = BracketEngine.build(s.teams, s.dbl);
+  const errs = BracketEngine.validate(b);
+  const L = BracketEngine.layout(b);
+  const { svg, rects } = drawBracket(b, L, s);
+  const T = tiles(L, s.scale, rects);
+
+  const overlay = T.list.map((t, i) => {
+    const fs = Math.min(t.w, t.h) * 0.35;
+    return `<rect class="bk-tile" x="${f(t.x + 3)}" y="${f(t.y + 3)}" width="${f(t.w - 6)}" height="${f(t.h - 6)}" stroke-width="${f(2 / s.scale)}"/>` +
+      `<text class="bk-tilenum" x="${f(t.x + t.w / 2)}" y="${f(t.y + t.h / 2)}" font-size="${f(fs)}">${i + 1}</text>`;
+  }).join('');
+  const W = f(L.width), H = f(L.height);
+  $('preview').innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Bracket preview">${overlay}${svg}</svg>`;
+
+  const label = s.title || 'Tournament bracket';
+  $('sheets').innerHTML = T.list.map((t, i) => `
+    <div class="sheet">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="${f(t.x)} ${f(t.y)} ${f(t.w)} ${f(t.h)}" preserveAspectRatio="xMinYMin meet">${svg}${T.marks}</svg>
+      <div class="sheet-label"><span><b>Page ${i + 1} of ${T.list.length}</b> &nbsp;·&nbsp; Row ${t.r + 1} of ${T.rows}, column ${t.c + 1} of ${T.cols}</span><span>${esc(label)} &nbsp;·&nbsp; Overlap pages so the ⊕ marks line up, then tape.</span></div>
+    </div>`).join('');
+
+  const inches = n => (n * s.scale / 100).toFixed(1);
+  stats.innerHTML = [
+    `<span class="stat">${b.games.length} games</span>`,
+    `<span class="stat">${T.list.length} page${T.list.length === 1 ? '' : 's'} · ${T.cols} across × ${T.rows} down</span>`,
+    `<span class="stat">${inches(L.width)}″ × ${inches(L.height)}″ assembled</span>`,
+    errs.length ? `<span class="stat err">Bracket check failed</span>` : `<span class="stat ok">✓ Bracket check passed</span>`,
+  ].join('');
+  errors.hidden = !errs.length;
+  errors.textContent = errs.join(' ');
+}
+
+(function init() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { saved = null; }
+  if (saved) applyState(saved);
+  const q = new URLSearchParams(location.search);
+  if (q.has('teams')) applyState({ teams: Number(q.get('teams')) });
+  if (q.has('type')) applyState({ dbl: q.get('type') !== 'single' });
+  if (q.has('title')) applyState({ title: q.get('title') });
+  if (q.has('scale')) applyState({ scale: Number(q.get('scale')) });
+
+  let inFrame = false;
+  try { inFrame = window.self !== window.top; } catch (e) { inFrame = true; }
+  if (inFrame) { $('print-area').hidden = true; $('frame-note').hidden = false; }
+
+  document.querySelectorAll('input, select').forEach(el => el.addEventListener('input', render));
+  document.querySelectorAll('.chip').forEach(btn => btn.addEventListener('click', () => {
+    applyState({ teams: Number(btn.dataset.teams), dbl: btn.dataset.elim === 'double' });
+    render();
+  }));
+  $('print').addEventListener('click', () => { render(); window.print(); });
+  render();
+})();
+</script>
+</body>
+</html>
